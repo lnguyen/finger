@@ -10,24 +10,30 @@ import (
 	"os"
 
 	"github.com/go-martini/martini"
-	"github.com/longnguyen11288/arm/omxplayer"
+	"github.com/longnguyen11288/finger/players"
+	"github.com/longnguyen11288/finger/players/omxplayer"
 )
 
 var dataDir string
 var channel string
+var mock bool
 
+//File struct to output filename
 type File struct {
 	Filename string `json:"filename"`
 }
 
+//Status struct to output status
 type Status struct {
 	Playing  bool   `json:"playing"`
 	Filename string `json:"filename"`
 }
 
+//Files List of files that can be played
 type Files []string
 
-func PlayFileHandler(player *omxplayer.OmxPlayer,
+//PlayFileHandler to play file
+func PlayFileHandler(player players.Player,
 	w http.ResponseWriter, r *http.Request) {
 	var file File
 	body, err := ioutil.ReadAll(r.Body)
@@ -43,7 +49,8 @@ func PlayFileHandler(player *omxplayer.OmxPlayer,
 	fmt.Fprint(w, `{ "success": "true" }`)
 }
 
-func StopFileHandler(player *omxplayer.OmxPlayer, w http.ResponseWriter) {
+//StopFileHandler is handler to stop playing file
+func StopFileHandler(player players.Player, w http.ResponseWriter) {
 	err := player.StopFile()
 	if err != nil {
 		fmt.Fprint(w, `{ "error": "`+err.Error()+`" }`)
@@ -52,6 +59,7 @@ func StopFileHandler(player *omxplayer.OmxPlayer, w http.ResponseWriter) {
 	fmt.Fprint(w, `{ "success": "true" }`)
 }
 
+//FilesHandler list the files that can be played
 func FilesHandler(w http.ResponseWriter) {
 	var files Files
 	osFiles, _ := ioutil.ReadDir(dataDir)
@@ -65,11 +73,13 @@ func FilesHandler(w http.ResponseWriter) {
 	fmt.Fprint(w, string(output))
 }
 
+//ChannelHandler handle the channel player is listed as
 func ChannelHandler() string {
 	return fmt.Sprintf(`{ "channel": "%s" }`, channel)
 }
 
-func StatusHandler(player *omxplayer.OmxPlayer, w http.ResponseWriter) {
+//StatusHandler handles status of player
+func StatusHandler(player players.Player, w http.ResponseWriter) {
 	var status Status
 	status.Playing = player.IsPlaying()
 	status.Filename = player.FilePlaying()
@@ -83,15 +93,18 @@ func StatusHandler(player *omxplayer.OmxPlayer, w http.ResponseWriter) {
 func main() {
 	flag.StringVar(&dataDir, "data-dir", ".", "Data directory for videos")
 	flag.StringVar(&channel, "channel", "80", "Channel used for advertisement")
+	flag.BoolVar(&mock, "mock", false, "Mock server for testing")
 	flag.Parse()
 
 	os.Chdir(dataDir)
-	player := omxplayer.New()
+	var player players.Player
+	if mock {
+		player = players.NewMockPlayer()
+	} else {
+		player = omxplayer.NewOmxPlayer()
+	}
 	m := martini.Classic()
-	m.Map(&player)
-	m.Get("/", func() string {
-		return "Hello world!"
-	})
+	m.Map(player)
 	m.Get("/channel", ChannelHandler)
 	m.Get("/files", FilesHandler)
 	m.Get("/status", StatusHandler)
